@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "partials/movie_row.html" import movie_row %}
+{% block title %}Current Round &middot; {{ app_name }}{% endblock %}
+{% block content %}
+
+{% if not round %}
+  <h2>No open round</h2>
+  <p class="sub">Nothing is in flight right now.</p>
+  <div class="empty">
+    Create the next round from <a href="/admin/rounds">Manage Rounds</a>.
+  </div>
+{% else %}
+  <h2>Round {{ round.number }}</h2>
+  <p class="sub">
+    Started {{ round.started_on.strftime('%B %d, %Y') }}
+    &middot; day {{ days_elapsed }}
+    &middot; {{ entries|length }} film{{ '' if entries|length == 1 else 's' }}
+    &middot; <span class="pill open">open</span>
+  </p>
+
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="value">{{ watched_count }} / {{ possible_count }}</div>
+      <div class="label">Viewings logged</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ total_runtime_display }}</div>
+      <div class="label">Total runtime</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ lineup|length }}</div>
+      <div class="label">Participants</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ last_sync_display }}</div>
+      <div class="label">Last Trakt sync</div>
+    </div>
+  </div>
+
+  {% if entries %}
+    <div class="table-wrap">
+      {% for entry in entries %}
+        {{ movie_row(entry, lineup, watch_map, rating_map, round) }}
+      {% endfor %}
+    </div>
+    {% if has_carried_ratings %}
+      <p class="legend">
+        <span class="rating">8<span class="carried-mark">*</span></span>
+        &nbsp;marks a rating from a viewing before this round began.
+      </p>
+    {% endif %}
+  {% else %}
+    <div class="empty">
+      No films picked yet.
+      <a href="/admin/rounds/{{ round.id }}">Add the picks for this round</a>.
+    </div>
+  {% endif %}
+
+  <div class="actions" style="margin-top:20px">
+    <form method="post" action="/admin/rounds/{{ round.id }}/sync">
+      <button type="submit" class="secondary small">Sync Trakt now</button>
+    </form>
+    <a class="btn secondary small" href="/admin/rounds/{{ round.id }}">Edit this round</a>
+  </div>
+{% endif %}
+
+{% endblock %}

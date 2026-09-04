@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Statistics &middot; {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Statistics</h2>
+<p class="sub">Across every round on record.</p>
+
+<div class="stat-grid">
+  <div class="stat"><div class="value">{{ overview.total_rounds }}</div><div class="label">Rounds</div></div>
+  <div class="stat"><div class="value">{{ overview.total_picks }}</div><div class="label">Films watched</div></div>
+  <div class="stat"><div class="value">{{ overview.distinct_movies }}</div><div class="label">Distinct titles</div></div>
+  <div class="stat"><div class="value">{{ overview.total_runtime_display }}</div><div class="label">Time on screen</div></div>
+</div>
+
+<section class="section">
+  <h3>Average runtime by selector</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Selector</th><th class="num">Films</th><th class="num">Average</th><th class="num">Total</th><th></th></tr></thead>
+      <tbody>
+        {% for row in runtimes %}
+        <tr>
+          <td>{{ row.participant }}</td>
+          <td class="num">{{ row.movie_count }}</td>
+          <td class="num">{{ row.average_display }}</td>
+          <td class="num">{{ row.total_display }}</td>
+          <td style="width:35%">
+            {% if row.average_runtime and max_avg_runtime %}
+              <span class="bar" style="width: {{ (row.average_runtime / max_avg_runtime * 100)|round(1) }}%"></span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h3>Total movies selected by person</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Person</th><th class="num">Films</th><th class="num">First round</th><th class="num">Latest round</th></tr></thead>
+      <tbody>
+        {% for row in picks %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td class="num">{{ row.count }}</td>
+          <td class="num">{{ row.first_round }}</td>
+          <td class="num">{{ row.last_round }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% macro tally_table(rows, noun) %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>{{ noun }}</th><th class="num">Films</th><th>Titles &amp; who picked them</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td class="num">{{ row.movie_count }}</td>
+          <td>
+            <details class="expand">
+              <summary>{{ row.entries|length }} entr{{ 'y' if row.entries|length == 1 else 'ies' }}</summary>
+              <ul class="detail-list">
+                {% for title, year, selector in row.entries %}
+                  <li>{{ title }}{% if year %} ({{ year }}){% endif %} — <span class="muted">{{ selector }}</span></li>
+                {% endfor %}
+              </ul>
+            </details>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">No credits stored yet — import or re-sync TMDB metadata.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endmacro %}
+
+<section class="section">
+  <h3>Most covered directors</h3>
+  {{ tally_table(directors, 'Director') }}
+</section>
+
+<section class="section">
+  <h3>Most covered actors</h3>
+  {{ tally_table(actors, 'Actor') }}
+</section>
+
+<section class="section">
+  <h3>Genres</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Genre</th><th class="num">Films</th><th></th></tr></thead>
+      <tbody>
+        {% for row in genres %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td class="num">{{ row.count }}</td>
+          <td style="width:50%">
+            <span class="bar" style="width: {{ (row.count / genres[0].count * 100)|round(1) }}%"></span>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h3>Films by release decade</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Decade</th><th class="num">Films</th><th></th></tr></thead>
+      <tbody>
+        {% for row in decades %}
+        <tr>
+          <td>{{ row.decade }}s</td>
+          <td class="num">{{ row.count }}</td>
+          <td style="width:50%">
+            <span class="bar" style="width: {{ (row.count / max_decade_count * 100)|round(1) }}%"></span>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

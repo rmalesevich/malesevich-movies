@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Participants &middot; {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Participants</h2>
+<p class="sub">
+  A participant is active from their joining round until their leaving round
+  (inclusive). Leave &ldquo;left round&rdquo; blank for anyone still in the lineup.
+</p>
+
+{# Forms live outside the table and are wired to their inputs by id, so the
+   table markup stays valid. #}
+{% for row in rows %}
+  <form id="edit-{{ row.participant.id }}" method="post"
+        action="/admin/participants/{{ row.participant.id }}"></form>
+  <form id="del-{{ row.participant.id }}" method="post"
+        action="/admin/participants/{{ row.participant.id }}/delete"
+        onsubmit="return confirm('Delete {{ row.participant.name }}? This also removes their {{ row.pick_count }} pick(s).');"></form>
+{% endfor %}
+
+<div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Trakt username</th>
+        <th class="num">Joined round</th><th class="num">Left round</th>
+        <th class="num">Picks</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set p = row.participant %}
+      <tr>
+        <td><input form="edit-{{ p.id }}" type="text" name="name" value="{{ p.name }}" required></td>
+        <td><input form="edit-{{ p.id }}" type="text" name="trakt_username" value="{{ p.trakt_username or '' }}" placeholder="none"></td>
+        <td><input form="edit-{{ p.id }}" type="number" name="joined_round" value="{{ p.joined_round }}" min="1" style="width:90px"></td>
+        <td><input form="edit-{{ p.id }}" type="number" name="left_round" value="{{ p.left_round or '' }}" min="1" style="width:90px" placeholder="—"></td>
+        <td class="num">{{ row.pick_count }}</td>
+        <td>
+          <div class="actions">
+            <button form="edit-{{ p.id }}" type="submit" class="small">Save</button>
+            <button form="del-{{ p.id }}" type="submit" class="small danger">Delete</button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No participants yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h3>Add a participant</h3>
+  <form method="post" action="/admin/participants">
+    <div class="field-row">
+      <div class="field">
+        <label for="new-name">Name</label>
+        <input type="text" id="new-name" name="name" required>
+      </div>
+      <div class="field">
+        <label for="new-trakt">Trakt username</label>
+        <input type="text" id="new-trakt" name="trakt_username" placeholder="optional">
+      </div>
+      <div class="field">
+        <label for="new-joined">Joined at round</label>
+        <input type="number" id="new-joined" name="joined_round" min="1" value="{{ next_round_number }}">
+      </div>
+    </div>
+    <button type="submit">Add participant</button>
+  </form>
+</div>
+{% endblock %}

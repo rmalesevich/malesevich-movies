@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.local
+data/*.db
+!data/.gitkeep
+data/*.db-wal
+data/*.db-shm
+data/seed/*.csv
+!data/seed/rounds.example.csv
+.pytest_cache/
+.ruff_cache/
+.DS_Store

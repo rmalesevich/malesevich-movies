@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "partials/movie_row.html" import movie_row %}
+{% block title %}Round {{ round.number }} &middot; {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Round {{ round.number }}</h2>
+<p class="sub">
+  {{ round.started_on.strftime('%B %d, %Y') }}
+  {% if round.discussed_on %}&rarr; discussed {{ round.discussed_on.strftime('%B %d, %Y') }}{% endif %}
+  &middot; <span class="pill {{ round.status.value }}">{{ round.status.value }}</span>
+  &middot; <a href="/admin/rounds/{{ round.id }}">edit</a>
+</p>
+
+{% if round.notes %}<div class="panel" style="margin-bottom:18px">{{ round.notes }}</div>{% endif %}
+
+{% if entries %}
+<div class="table-wrap">
+  {% for entry in entries %}
+    {{ movie_row(entry, lineup, watch_map, rating_map, round) }}
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">No films recorded for this round.</div>
+{% endif %}
+
+<p class="sub" style="margin-top:22px">
+  {% if prev_round %}<a href="/rounds/{{ prev_round }}">&larr; Round {{ prev_round }}</a>{% endif %}
+  {% if prev_round and next_round %}&nbsp;&middot;&nbsp;{% endif %}
+  {% if next_round %}<a href="/rounds/{{ next_round }}">Round {{ next_round }} &rarr;</a>{% endif %}
+</p>
+{% endblock %}

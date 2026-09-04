@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E🎬%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <h1><a href="/">{{ app_name }}</a></h1>
+      <span class="tagline">Four people. Four films. One argument a month.</span>
+    </div>
+    <nav class="main">
+      <a href="/" class="{{ 'active' if nav == 'current' }}">Current Round</a>
+      <a href="/rounds" class="{{ 'active' if nav == 'rounds' }}">Rounds</a>
+      <a href="/stats" class="{{ 'active' if nav == 'stats' }}">Statistics</a>
+      <span class="spacer"></span>
+      <a href="/admin/rounds" class="{{ 'active' if nav == 'admin-rounds' }}">Manage Rounds</a>
+      <a href="/admin/participants" class="{{ 'active' if nav == 'admin-participants' }}">Participants</a>
+      {% if auth_enabled %}<a href="/logout">Log out</a>{% endif %}
+    </nav>
+  </div>
+</header>
+<main>
+  {% for category, message in flashes %}
+    <div class="flash {{ category }}">{{ message }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>
