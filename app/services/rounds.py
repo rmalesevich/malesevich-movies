@@ -1,10 +1,11 @@
 """Shared read helpers for assembling a round's view context."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
@@ -129,6 +130,46 @@ def watch_maps(
         {(w.participant_id, w.movie_id): w for w in watches},
         {(r.participant_id, r.movie_id): r for r in ratings},
     )
+
+
+def tagline(db: Session) -> str | None:
+    """The masthead tagline, derived from the data.
+
+    Reads "4 people. 4 films. One argument every 22 days." - the headcount is
+    the participants still in the lineup, and the interval is the mean gap
+    between round start dates, rounded up to whole days.
+
+    Returns ``None`` whenever it cannot be stated honestly: no active
+    participants, or fewer than two rounds to measure a gap between. The
+    template omits the line entirely in that case rather than printing a
+    half-filled sentence.
+    """
+    people = db.scalar(
+        select(func.count(Participant.id)).where(Participant.left_round.is_(None))
+    )
+    if not people:
+        return None
+
+    rounds, first, last = db.execute(
+        select(func.count(Round.id), func.min(Round.started_on),
+               func.max(Round.started_on))
+    ).one()
+    if not rounds or rounds < 2 or first is None or last is None:
+        return None
+
+    # The mean of the consecutive gaps is just the total span over the number
+    # of gaps, so this needs no per-round iteration.
+    span_days = (last - first).days
+    if span_days <= 0:
+        return None
+    interval = math.ceil(span_days / (rounds - 1))
+    if interval < 1:
+        return None
+
+    noun = "person" if people == 1 else "people"
+    film = "film" if people == 1 else "films"
+    cadence = "every day" if interval == 1 else f"every {interval} days"
+    return f"{people} {noun}. {people} {film}. One argument {cadence}."
 
 
 def runtime_display(minutes: int) -> str:
