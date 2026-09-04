@@ -20,6 +20,7 @@ from app.models import (
     SyncLog,
 )
 from app.services import rounds as round_service
+from app.services.participants import clean_name, find_by_name
 from app.services.sync import sync_round
 from app.services.tmdb import TMDBClient, TMDBError, upsert_movie_from_tmdb
 from app.services.trakt import TraktClient
@@ -89,9 +90,15 @@ def create_participant(
     joined_round: str = Form("1"),
     db: Session = Depends(get_db),
 ):
-    name = name.strip()
-    if db.scalar(select(Participant).where(Participant.name == name)):
-        flash(request, f"{name} already exists.", "error")
+    name = clean_name(name)
+    existing = find_by_name(db, name)
+    if existing:
+        flash(
+            request,
+            f"{existing.name} already exists - names are matched ignoring case "
+            "and spacing.",
+            "error",
+        )
         return _redirect("/admin/participants")
 
     db.add(
@@ -120,7 +127,13 @@ def update_participant(
     if participant is None:
         raise HTTPException(status_code=404, detail="Participant not found")
 
-    participant.name = name.strip()
+    name = clean_name(name)
+    clash = find_by_name(db, name)
+    if clash and clash.id != participant.id:
+        flash(request, f"{clash.name} already uses that name.", "error")
+        return _redirect("/admin/participants")
+
+    participant.name = name
     participant.trakt_username = (trakt_username or "").strip() or None
     participant.joined_round = _optional_int(joined_round) or 1
     participant.left_round = _optional_int(left_round)

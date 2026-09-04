@@ -159,3 +159,63 @@ def test_us_style_dates_are_accepted(db, tmp_path):
     import_rounds(db, path, FakeTMDB())
 
     assert db.query(Round).one().started_on == date(2022, 2, 19)
+
+
+def test_one_person_spelled_several_ways_is_one_participant(db, tmp_path):
+    """The reported bug: 'ryan' and 'Ryan' became two people."""
+    path = write_csv(tmp_path, """round,started_on,participant,tmdb_id
+1,2022-02-19,Ryan,949
+2,2022-03-20,ryan,275
+3,2022-04-24,  RYAN  ,680
+""")
+
+    report = import_rounds(db, path, FakeTMDB())
+
+    assert report.participants_created == 1
+    person = db.query(Participant).one()
+    assert person.name == "Ryan"          # the first spelling seen
+    assert person.joined_round == 1
+    assert db.query(Pick).count() == 3    # all three picks on one person
+
+
+def test_internal_spacing_differences_are_the_same_person(db, tmp_path):
+    path = write_csv(tmp_path, """round,started_on,participant,tmdb_id
+1,2022-02-19,Ryan  Malesevich,949
+2,2022-03-20,ryan malesevich,275
+""")
+
+    report = import_rounds(db, path, FakeTMDB())
+
+    assert report.participants_created == 1
+    assert db.query(Participant).one().name == "Ryan Malesevich"
+
+
+def test_genuinely_different_names_stay_separate(db, tmp_path):
+    """Loose matching must not collapse people who really are different."""
+    path = write_csv(tmp_path, """round,started_on,participant,tmdb_id
+1,2022-02-19,Ryan,949
+1,2022-02-19,Ryanne,275
+1,2022-02-19,Bryan,680
+""")
+
+    report = import_rounds(db, path, FakeTMDB())
+
+    assert report.participants_created == 3
+    assert {p.name for p in db.query(Participant).all()} == {"Ryan", "Ryanne", "Bryan"}
+
+
+def test_import_matches_participants_already_in_the_database(db, tmp_path):
+    """A person added through the UI is not duplicated by a differently-cased CSV."""
+    existing = Participant(name="Ryan", joined_round=1, trakt_username="ryanm")
+    db.add(existing)
+    db.commit()
+
+    path = write_csv(tmp_path, """round,started_on,participant,tmdb_id
+1,2022-02-19,ryan,949
+""")
+    report = import_rounds(db, path, FakeTMDB())
+
+    assert report.participants_created == 0
+    person = db.query(Participant).one()
+    assert person.name == "Ryan"                # UI spelling wins, not the CSV's
+    assert person.trakt_username == "ryanm"     # and their settings survive

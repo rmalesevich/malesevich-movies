@@ -29,6 +29,7 @@ from app.models import (
     RoundParticipant,
     RoundStatus,
 )
+from app.services.participants import clean_name, name_index, normalize_name
 from app.services.tmdb import TMDBClient, TMDBError, upsert_movie_from_tmdb
 
 log = logging.getLogger(__name__)
@@ -135,13 +136,27 @@ def resolve_tmdb_id(
 
 
 def _get_or_create_participant(
-    db: Session, name: str, round_number: int, report: ImportReport
+    db: Session,
+    name: str,
+    round_number: int,
+    report: ImportReport,
+    index: dict[str, Participant],
 ) -> Participant:
-    participant = db.scalar(select(Participant).where(Participant.name == name))
+    """Find the participant this row refers to, creating them only if new.
+
+    Matching ignores capitalisation and stray spacing, so "ryan", "Ryan" and
+    "Ryan " in the same spreadsheet all resolve to one person. ``index`` is
+    kept in step as rows are processed so a name first seen mid-file is not
+    created twice.
+    """
+    key = normalize_name(name)
+    participant = index.get(key)
     if participant is None:
-        participant = Participant(name=name, joined_round=round_number)
+        # Stored with the spelling the CSV used, minus the stray spacing.
+        participant = Participant(name=clean_name(name), joined_round=round_number)
         db.add(participant)
         db.flush()
+        index[key] = participant
         report.participants_created += 1
     elif round_number < participant.joined_round:
         participant.joined_round = round_number
@@ -159,6 +174,9 @@ def import_rounds(
     report = ImportReport()
     client = client or TMDBClient()
     rows = read_rows(path)
+    # Existing participants, keyed by normalised name. Built once rather than
+    # queried per row, and updated as new people are created.
+    people = name_index(db)
 
     grouped: dict[int, list[dict[str, str]]] = {}
     for index, row in enumerate(rows, start=2):
@@ -226,7 +244,9 @@ def import_rounds(
             if not name:
                 report.skipped.append(f"line {line}: missing participant")
                 continue
-            participant = _get_or_create_participant(db, name, number, report)
+            participant = _get_or_create_participant(
+                db, name, number, report, people
+            )
 
             if not db.scalar(
                 select(RoundParticipant).where(

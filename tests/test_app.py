@@ -253,3 +253,51 @@ def test_a_rating_made_during_the_round_is_not_marked(client, db):
     assert 'class="rating "' in body or 'class="rating"' in body
     assert "carried" not in body
     assert "before this round began" not in body
+
+
+def test_admin_will_not_create_a_case_variant_duplicate(client, db):
+    from app.models import Participant
+
+    client.post("/admin/participants",
+                data={"name": "Ryan", "trakt_username": "", "joined_round": "1"},
+                follow_redirects=False)
+    # A differently-cased, differently-spaced spelling of the same person.
+    client.post("/admin/participants",
+                data={"name": "  ryan ", "trakt_username": "", "joined_round": "1"},
+                follow_redirects=False)
+
+    matches = db.query(Participant).filter(Participant.name.in_(["Ryan", "ryan"]))
+    assert matches.count() == 1
+    assert "already exists" in client.get("/admin/participants").text
+
+
+def test_admin_stores_names_with_tidied_spacing(client, db):
+    from app.models import Participant
+
+    client.post("/admin/participants",
+                data={"name": "  Ryan   Malesevich  ", "trakt_username": "",
+                      "joined_round": "1"},
+                follow_redirects=False)
+
+    assert db.query(Participant).one().name == "Ryan Malesevich"
+
+
+def test_admin_rename_cannot_collide_with_another_person(client, db):
+    from app.models import Participant
+
+    client.post("/admin/participants", data={"name": "Ryan", "trakt_username": "",
+                                             "joined_round": "1"},
+                follow_redirects=False)
+    client.post("/admin/participants", data={"name": "Bob", "trakt_username": "",
+                                             "joined_round": "1"},
+                follow_redirects=False)
+    bob = db.query(Participant).filter_by(name="Bob").one()
+
+    client.post(f"/admin/participants/{bob.id}",
+                data={"name": "RYAN", "trakt_username": "", "joined_round": "1",
+                      "left_round": ""},
+                follow_redirects=False)
+
+    db.expire_all()
+    assert db.query(Participant).filter_by(id=bob.id).one().name == "Bob"
+    assert "already uses that name" in client.get("/admin/participants").text

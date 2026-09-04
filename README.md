@@ -90,6 +90,44 @@ and crew) for every film, skips rounds that already exist, and prints a report
 of anything it could not resolve. **Check the `unresolved` section** — a title
 that matched a different year is flagged there rather than silently accepted.
 
+### How participant names are matched
+
+Names are matched **ignoring capitalisation and spacing**, so `Ryan`, `ryan`,
+`  RYAN  ` and `Ryan  Malesevich` vs `Ryan Malesevich` all resolve to one
+person — whether they are already in the database or appear for the first time
+mid-file. Genuinely different names (`Ryan` vs `Ryanne`) stay separate.
+
+A new participant is stored with the first spelling the CSV used, minus any
+stray spacing; capitalisation is never invented or corrected, so fix it in the
+UI if the spreadsheet had it lowercase. Someone already added through the admin
+page keeps their existing name and settings — the CSV never overwrites them.
+
+The same rule applies to the *Add participant* form, so the UI cannot mint a
+case-variant duplicate either.
+
+### Repairing duplicates from an earlier import
+
+Imports run before this matching existed may have split one person in two. To
+find them:
+
+```bash
+docker compose exec web python -m app.cli participants
+```
+
+Names differing only by case or spacing are flagged at the bottom. Fold one into
+the other — picks, watches, ratings and round memberships all move across, and
+the widest participation window is kept:
+
+```bash
+docker compose exec web python -m app.cli merge-participants ryan Ryan --dry-run
+docker compose exec web python -m app.cli merge-participants ryan Ryan
+```
+
+The first argument is the duplicate to remove, the second is the record to keep.
+Exact spellings are matched first, so the two are addressable even though they
+normalise to the same name. If both records picked in the same round, the
+duplicate row is dropped rather than duplicated.
+
 There is a worked example at [data/seed/rounds.example.csv](data/seed/rounds.example.csv).
 
 ---
@@ -165,29 +203,230 @@ The normal rhythm, matching how the project actually works:
 
 ---
 
+## Publishing to GitHub
+
+The NAS deploys by pulling from GitHub, so the local folder needs to be
+connected to a repository first. This is a one-time setup.
+
+### 1. Create the repository on GitHub
+
+Create a **private** repository named `malesevich-movies`. Do **not** let GitHub
+add a README, `.gitignore` or licence — the folder already has commits, and an
+initialised remote would have to be merged before the first push.
+
+With the [`gh` CLI](https://cli.github.com) you can do it from the terminal
+instead, which also wires up the remote:
+
+```bash
+cd ~/Developer/malesevich-movies
+gh auth login                 # once per machine
+gh repo create malesevich-movies --private --source=. --remote=origin
+```
+
+If you used `gh repo create`, skip to step 4.
+
+### 2. Confirm what you are about to publish
+
+Secrets must not leave the machine. `.env` and the database are already ignored,
+but check before the first push rather than after:
+
+```bash
+git status --short            # .env must NOT appear here
+git check-ignore -v .env      # should print the matching .gitignore rule
+```
+
+If `.env` shows up as untracked in `git status`, stop and fix `.gitignore`
+before continuing.
+
+### 3. Point the folder at the remote
+
+Copy the URL GitHub shows you. SSH is recommended — the NAS will use the same
+remote later, and SSH keys avoid re-entering a token on every pull:
+
+```bash
+cd ~/Developer/malesevich-movies
+git remote add origin git@github.com:<your-username>/malesevich-movies.git
+git remote -v                 # confirm both fetch and push lines
+```
+
+Already have an `origin` pointing somewhere else? Replace it rather than adding
+a second one:
+
+```bash
+git remote set-url origin git@github.com:<your-username>/malesevich-movies.git
+```
+
+### 4. Push
+
+```bash
+git push -u origin main
+```
+
+`-u` sets the upstream, so later pushes are just `git push`. If your local
+branch is not `main`, either push it under that name
+(`git push -u origin HEAD:main`) or rename it first with
+`git branch -M main`.
+
+### 5. Give the NAS read access
+
+The NAS needs to authenticate to pull a private repo. Generate a key **on the
+NAS** over SSH:
+
+```bash
+ssh root@truenas.local
+ssh-keygen -t ed25519 -C "truenas-malesevich" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub
+```
+
+Add that public key to the repository as a **deploy key** (GitHub → the repo →
+Settings → Deploy keys → Add deploy key). Leave "Allow write access" unchecked:
+the NAS only ever pulls. Then verify from the NAS:
+
+```bash
+ssh -T git@github.com        # expect "successfully authenticated"
+```
+
+---
+
 ## Deploying to TrueNAS
 
-1. Create a dataset for the app's state, e.g. `/mnt/tank/apps/malesevich-movies`.
-2. Copy the repo to the NAS and create `.env` there. Set `DATA_PATH` to the
-   dataset path, `HOST_PORT` to whatever port you want, and `PUID`/`PGID` to the
-   owner of the dataset.
-3. Bring it up:
+The deployment splits into two halves that stay separate on purpose:
 
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d --build
-   ```
+| Half | Where | What it does |
+| --- | --- | --- |
+| **Build** | SSH, by hand or via `docker/deploy.sh` | `git pull`, then `docker build` the image locally on the NAS |
+| **Run** | TrueNAS Apps → Custom App | Runs the already-built image via `docker-compose.prod.yml` |
 
-Everything stateful — the SQLite database and its WAL — lives in that one
-directory, so **a ZFS snapshot of the dataset is a complete backup**. There is
-no second database container to manage.
+**They cannot be combined.** TrueNAS runs `docker compose pull` when it deploys
+or updates an app, and a pull of a locally-built image fails with
+`pull access denied for malesevich-movies, repository does not exist`. So
+`docker-compose.prod.yml` deliberately has **no `build:` section** and is
+marked `pull_policy: never`; the image has to exist on the box before the app
+starts. Your instinct was right — the build is a separate step.
 
-To update: `git pull && docker compose -f docker-compose.prod.yml up -d --build`.
-Migrations apply themselves on start.
+### 1. Prepare the dataset
+
+Create a dataset to hold the repo and the database, e.g.
+`/mnt/SSDPool/Application_Data/Malesevich-Movies`. Everything stateful lives
+under its `data/` subdirectory, so **a ZFS snapshot of this dataset is a
+complete backup** — there is no second database container to think about.
+
+### 2. Clone the repo onto the NAS
+
+```bash
+ssh root@truenas.local
+cd /mnt/SSDPool/Application_Data
+git clone git@github.com:<your-username>/malesevich-movies.git Malesevich-Movies
+cd Malesevich-Movies
+```
+
+### 3. Create the .env on the NAS
+
+`.env` is not in git, so it has to be written on the NAS directly:
+
+```bash
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # SECRET_KEY
+vi .env
+```
+
+Set at minimum:
+
+```ini
+SECRET_KEY=<the generated value>
+APP_PASSWORD=<your site password>
+TMDB_API_KEY=<your TMDB key>
+TRAKT_CLIENT_ID=<your Trakt client id>
+
+HOST_PORT=8080
+DATA_PATH=/mnt/SSDPool/Application_Data/Malesevich-Movies/data
+PUID=568
+PGID=568
+```
+
+`DATA_PATH` must be an **absolute path** — it is bind-mounted at `/app/data`.
+`568:568` is the `apps` user on TrueNAS; make sure it owns the directory:
+
+```bash
+mkdir -p /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+chown -R 568:568 /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+```
+
+### 4. Build the image
+
+```bash
+cd /mnt/SSDPool/Application_Data/Malesevich-Movies
+docker build -t malesevich-movies:latest .
+docker images malesevich-movies      # confirm it exists before the next step
+```
+
+The app will not start if this image is missing, because it is never pulled.
+
+### 5. Install the Custom App
+
+TrueNAS → **Apps** → **Discover Apps** → **Custom App** → **Install via YAML**,
+and paste exactly this:
+
+```yaml
+include:
+  - /mnt/SSDPool/Application_Data/Malesevich-Movies/docker-compose.prod.yml
+services: {}
+```
+
+Note the `-` — `include` takes a list. Everything else (ports, the bind mount,
+the uid/gid) comes from `docker-compose.prod.yml` and the `.env` sitting beside
+it; Compose resolves both relative to the *included* file, not to wherever
+TrueNAS runs from.
+
+The site is then at `http://<nas-address>:8080`. Migrations run automatically
+on every container start, so the first boot creates the schema.
+
+### 6. Seed the history
+
+With the app running, import the spreadsheet (see
+[Importing the historical rounds](#importing-the-historical-rounds)):
+
+```bash
+docker exec -it malesevich-movies python -m app.cli import-history data/seed/rounds.csv --dry-run
+```
+
+Put `rounds.csv` in the dataset's `data/seed/` directory so the container can
+see it at `/app/data/seed/`.
+
+### Updating
+
+```bash
+ssh root@truenas.local
+cd /mnt/SSDPool/Application_Data/Malesevich-Movies
+./docker/deploy.sh
+```
+
+The script pulls, rebuilds, and recreates the container onto the new image.
+
+**Restarting the app is not enough.** A restart reuses the image the container
+was created from, so it will keep serving the old build with no error to tell
+you. The container must be *recreated*. `deploy.sh` handles that by reusing the
+compose project TrueNAS created:
+
+```bash
+docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' malesevich-movies
+```
+
+If you would rather do it from the UI, use **Edit → Save** on the app (which
+re-applies the compose file and recreates the container) rather than
+**Restart**.
+
+To confirm which build is live:
+
+```bash
+docker inspect -f '{{.Image}}' malesevich-movies
+docker images --no-trunc -q malesevich-movies:latest    # should match
+```
+
+### Notes
 
 The app runs with a **single worker on purpose** — the scheduler runs in-process,
 and extra workers would run the nightly sync more than once.
-
----
 
 ## Configuration
 
@@ -231,6 +470,7 @@ app/
     trakt.py         Trakt client
     sync.py          Reconciles Trakt data against a round
     importer.py      Historical CSV seeding
+    participants.py  Name matching (case/spacing) and duplicate merging
     stats.py         Aggregate queries
     rounds.py        Shared read helpers
   templates/         Jinja2
@@ -238,6 +478,7 @@ app/
 alembic/             Migrations
 tests/               pytest suite
 docker/entrypoint.sh Runs migrations, then the server
+docker/deploy.sh     NAS update: pull, rebuild, recreate the container
 ```
 
 ### Data model notes

@@ -11,6 +11,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import Participant, Round
 from app.services.importer import import_rounds
+from app.services.participants import merge, normalize_name, resolve
 from app.services.sync import sync_open_rounds, sync_round
 from app.services.tmdb import TMDBClient, upsert_movie_from_tmdb
 from app.services.trakt import TraktClient
@@ -112,7 +113,7 @@ def refresh_metadata(
 
 @cli.command("participants")
 def list_participants():
-    """Show the participant roster."""
+    """Show the participant roster, flagging likely duplicates."""
     db = SessionLocal()
     try:
         people = db.scalars(
@@ -121,10 +122,73 @@ def list_participants():
         if not people:
             typer.echo("No participants yet.")
             return
+
+        by_key: dict[str, list[Participant]] = {}
+        for person in people:
+            by_key.setdefault(normalize_name(person.name), []).append(person)
+
         for person in people:
             window = f"rounds {person.joined_round}-{person.left_round or 'now'}"
             trakt = person.trakt_username or "no trakt account"
             typer.echo(f"  {person.name:<20} {window:<18} {trakt}")
+
+        dupes = [group for group in by_key.values() if len(group) > 1]
+        if dupes:
+            typer.echo("")
+            typer.secho(
+                "Names that differ only by case or spacing:", fg="yellow"
+            )
+            for group in dupes:
+                names = " / ".join(repr(p.name) for p in group)
+                typer.echo(f"  {names}")
+            typer.echo(
+                "\nFold them together with:\n"
+                "  python -m app.cli merge-participants <from> <into>"
+            )
+    finally:
+        db.close()
+
+
+@cli.command("merge-participants")
+def merge_participants(
+    source: str = typer.Argument(..., help="The duplicate to remove"),
+    target: str = typer.Argument(..., help="The participant to keep"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report without writing"),
+):
+    """Fold one participant into another, moving their picks and history.
+
+    Repairs duplicates created before names were matched loosely, e.g.
+    `merge-participants ryan Ryan`. Rows that would collide (both records
+    picking in the same round) are dropped rather than duplicated.
+    """
+    db = SessionLocal()
+    try:
+        src = resolve(db, source)
+        dst = resolve(db, target)
+        if src is None:
+            typer.secho(f"No participant matching {source!r}.", fg="red")
+            raise typer.Exit(1)
+        if dst is None:
+            typer.secho(f"No participant matching {target!r}.", fg="red")
+            raise typer.Exit(1)
+        if src.id == dst.id:
+            typer.secho(
+                f"{source!r} and {target!r} are already the same record.", fg="yellow"
+            )
+            raise typer.Exit(1)
+
+        moved = merge(db, src, dst)
+        typer.echo(
+            f"Folded {src.name!r} into {dst.name!r}: "
+            f"{moved['picks']} picks, {moved['watches']} watches, "
+            f"{moved['ratings']} ratings, {moved['rounds']} round memberships"
+            + (f", {moved['dropped']} duplicate rows dropped" if moved["dropped"] else "")
+        )
+        if dry_run:
+            db.rollback()
+            typer.secho("Dry run - nothing was written.", fg="yellow")
+        else:
+            db.commit()
     finally:
         db.close()
 
