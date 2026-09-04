@@ -423,6 +423,52 @@ docker inspect -f '{{.Image}}' malesevich-movies
 docker images --no-trunc -q malesevich-movies:latest    # should match
 ```
 
+### Troubleshooting: the app goes straight to "Stopped"
+
+TrueNAS reports a container that started and then exited as **Stopped**, with no
+indication of why. The reason is always in the container log:
+
+```bash
+ssh root@truenas.local
+docker ps -a --filter name=malesevich-movies      # look at the STATUS/exit code
+docker logs malesevich-movies
+```
+
+(Or in the UI: **Apps** → the app → **Logs**.) The stopped container is kept, so
+the log survives the crash.
+
+| Log says | Cause | Fix |
+| --- | --- | --- |
+| `cannot open /usr/local/bin/entrypoint.sh: Permission denied`, container `Restarting` | The image was built from a checkout whose files are mode 600, so unreadable files were baked in. Fixed in the Dockerfile — an image built before that fix still carries the problem. | Pull and rebuild: `git pull && docker build -t malesevich-movies:latest .` |
+| `/app/data is not writable` | The dataset is not owned by the uid the container runs as | `chown -R 568:568 <DATA_PATH>` on the host |
+| `the database directory ... does not exist` | `DATA_PATH` points somewhere that is not there | Create it, or correct `DATA_PATH` in `.env` |
+| `unable to open database file` | Same permission problem, from an older image built before the preflight check | Rebuild: `docker build -t malesevich-movies:latest .` |
+| `required variable DATA_PATH is missing` | No `.env` beside `docker-compose.prod.yml`, or `DATA_PATH` unset in it | Create `.env` on the NAS (step 3 above) |
+| `pull access denied` | The image was not built on the NAS | `docker build -t malesevich-movies:latest .` |
+
+A container stuck in `Restarting` rather than `Exited` is crash-looping because
+of `restart: unless-stopped`; the log repeats the same line each time.
+
+To check the two things that go wrong most often:
+
+```bash
+# 1. Does the image exist on the NAS?
+docker images malesevich-movies
+
+# 2. Does the data directory exist, and who owns it?
+stat -c '%n owned by %u:%g mode %a' /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+```
+
+That uid:gid must match `PUID`/`PGID` in `.env` (568:568 by default). If it does
+not:
+
+```bash
+chown -R 568:568 /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+```
+
+Then redeploy — remember that **Restart is not enough** if you rebuilt the
+image; use `./docker/deploy.sh` or **Edit → Save**.
+
 ### Notes
 
 The app runs with a **single worker on purpose** — the scheduler runs in-process,

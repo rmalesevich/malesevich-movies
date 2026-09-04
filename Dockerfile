@@ -14,12 +14,22 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# COPY preserves the *source* file modes, so a checkout on a host with a
+# restrictive umask or dataset ACL (TrueNAS can produce 600) bakes unreadable
+# files into the image. `chmod +x` on a 600 file yields 700, and the container
+# then dies with "cannot open /usr/local/bin/entrypoint.sh: Permission denied"
+# for every uid except the owner. Set the modes explicitly so the image never
+# depends on how the build host happened to check the repo out.
+RUN chmod 0755 /usr/local/bin/entrypoint.sh && \
+    chmod -R a+rX /app
 
 # The sqlite file lives here; the compose files mount a volume over it.
+# /app is left world-readable rather than owned by one uid: production runs as
+# the TrueNAS "apps" user (568) via compose's `user:`, not as this default.
 RUN mkdir -p /app/data && \
     adduser --disabled-password --gecos "" --uid 1000 appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app/data
 USER appuser
 
 EXPOSE 8000
