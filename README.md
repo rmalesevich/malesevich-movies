@@ -156,6 +156,27 @@ distinguishable from a fresh one.
 The job is idempotent — re-running it adds nothing new. It keeps the *earliest*
 play inside the window as the watch date and counts replays in `plays`.
 
+### Staying inside Trakt's rate limit
+
+Trakt allows 1000 GETs per 5 minutes. Three things keep the app under it:
+
+1. **Requests are spaced** by `TRAKT_MIN_INTERVAL` (default 0.4s, about 150/min).
+2. **A 429 is retried**, honouring the `Retry-After` header, up to
+   `TRAKT_MAX_RETRIES` times. The wait is capped by `TRAKT_MAX_BACKOFF` so a
+   manual sync from the web UI cannot hang indefinitely; after that it fails
+   with a clear "try again in a few minutes".
+3. **Ratings are fetched once per user per run.** This is the big one. Ratings
+   are account-wide rather than per-round, so a 76-round import used to refetch
+   each participant's entire ratings list 76 times. For an active Trakt account
+   that list can run to 150+ pages, which is what exhausted the limit.
+
+Watch history is still fetched per round, because it is genuinely bounded by
+each round's date window and cannot be shared between rounds.
+
+If you do get rate limited, the sync fails cleanly and reports it in the sync
+log; nothing is left half-written. Wait five minutes and run it again — the
+import skips rounds that already exist, so it is safe to repeat.
+
 **Participants' Trakt profiles must be public.** Reading a public profile needs
 only a Client ID, so there is no OAuth flow and no per-user tokens to refresh.
 A private profile is reported in the sync log as a 401/403 rather than failing
@@ -525,6 +546,9 @@ See [.env.example](.env.example) for the annotated list.
 | `TRAKT_CLIENT_ID` | — | Trakt application Client ID. |
 | `SYNC_ENABLED` | `true` | Set false to disable the nightly job. |
 | `SYNC_HOUR` / `SYNC_MINUTE` | `4` / `30` | When the job runs. |
+| `TRAKT_MIN_INTERVAL` | `0.4` | Seconds between Trakt requests. Raise it to be gentler. |
+| `TRAKT_MAX_RETRIES` | `3` | How many times to retry a 429 before giving up. |
+| `TRAKT_MAX_BACKOFF` | `60` | Longest `Retry-After` to honour, in seconds. |
 | `TIMEZONE` | `America/New_York` | Timezone the schedule is interpreted in. |
 | `DATABASE_URL` | `sqlite:///data/malesevich.db` | Swap for a Postgres URL if the app ever outgrows SQLite. |
 

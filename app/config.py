@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     # Only the client id is needed to read *public* profiles.
     trakt_client_id: str = ""
     trakt_base_url: str = "https://api.trakt.tv"
+    # Trakt allows 1000 GETs per 5 minutes (~3.3/sec). Pace well under that:
+    # 0.4s between calls is ~150/min, comfortably inside the budget.
+    trakt_min_interval: float = 0.4
+    # How many times to retry a 429 before giving up, and the longest we will
+    # honour a Retry-After. The cap matters because a manual sync from the web
+    # UI blocks the request while it waits.
+    trakt_max_retries: int = 3
+    trakt_max_backoff: float = 60.0
 
     # --- Sync scheduler ---
     sync_enabled: bool = True

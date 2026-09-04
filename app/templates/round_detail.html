@@ -22,6 +22,22 @@
 <div class="empty">No films recorded for this round.</div>
 {% endif %}
 
+<div class="actions" style="margin-top:20px">
+  <form method="post" action="/admin/rounds/{{ round.id }}/sync">
+    <input type="hidden" name="next" value="/rounds/{{ round.number }}">
+    <button type="submit" class="secondary small">Sync Trakt now</button>
+  </form>
+  <a class="btn secondary small" href="/admin/rounds/{{ round.id }}">Edit this round</a>
+</div>
+{% if not round.is_open %}
+  <p class="sub" style="margin-top:10px">
+    Syncing a closed round re-checks Trakt within its original window
+    ({{ round.started_on.strftime('%b %d, %Y') }}
+    &ndash; {{ round.discussed_on.strftime('%b %d, %Y') if round.discussed_on else 'today' }}).
+    Ratings are picked up whenever they were made.
+  </p>
+{% endif %}
+
 <p class="sub" style="margin-top:22px">
   {% if prev_round %}<a href="/rounds/{{ prev_round }}">&larr; Round {{ prev_round }}</a>{% endif %}
   {% if prev_round and next_round %}&nbsp;&middot;&nbsp;{% endif %}

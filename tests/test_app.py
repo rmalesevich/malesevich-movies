@@ -301,3 +301,44 @@ def test_admin_rename_cannot_collide_with_another_person(client, db):
     db.expire_all()
     assert db.query(Participant).filter_by(id=bob.id).one().name == "Bob"
     assert "already uses that name" in client.get("/admin/participants").text
+
+
+def test_historical_round_has_a_sync_button(client, world):
+    """Closed rounds get the same 'Sync Trakt now' action as the current one."""
+    body = client.get("/rounds/1").text
+
+    assert "Sync Trakt now" in body
+    assert f'action="/admin/rounds/{world["r1"].id}/sync"' in body
+    # It returns to the round being viewed, not to the admin page.
+    assert '<input type="hidden" name="next" value="/rounds/1">' in body
+    assert "Syncing a closed round re-checks Trakt within its original window" in body
+
+
+def test_sync_returns_to_the_page_it_was_started_from(client, world):
+    response = client.post(
+        f"/admin/rounds/{world['r1'].id}/sync",
+        data={"next": "/rounds/1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/rounds/1"
+
+
+def test_sync_defaults_back_to_the_admin_page(client, world):
+    response = client.post(
+        f"/admin/rounds/{world['r1'].id}/sync", follow_redirects=False
+    )
+
+    assert response.headers["location"] == f"/admin/rounds/{world['r1'].id}"
+
+
+def test_sync_will_not_redirect_off_site(client, world):
+    """`next` is attacker-controllable, so only local paths are honoured."""
+    for hostile in ("https://evil.example/x", "//evil.example/x", "javascript:alert(1)"):
+        response = client.post(
+            f"/admin/rounds/{world['r1'].id}/sync",
+            data={"next": hostile},
+            follow_redirects=False,
+        )
+        assert response.headers["location"] == f"/admin/rounds/{world['r1'].id}"

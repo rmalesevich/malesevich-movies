@@ -36,6 +36,18 @@ def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
 
+def _safe_next(value: str | None, default: str) -> str:
+    """Where to return after an action.
+
+    Only same-site absolute paths are honoured, so a crafted `next` cannot turn
+    a POST into an open redirect.
+    """
+    candidate = (value or "").strip()
+    if candidate.startswith("/") and not candidate.startswith("//"):
+        return candidate
+    return default
+
+
 def _optional_int(value: str | None) -> int | None:
     value = (value or "").strip()
     return int(value) if value else None
@@ -431,11 +443,17 @@ def clear_pick(
 # Manual sync triggers
 # ---------------------------------------------------------------------------
 @router.post("/rounds/{round_id}/sync")
-def sync_now(round_id: int, request: Request, db: Session = Depends(get_db)):
+def sync_now(
+    round_id: int,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     round_ = _get_round(db, round_id)
+    back = _safe_next(next, f"/admin/rounds/{round_id}")
     if not settings.trakt_enabled:
         flash(request, "TRAKT_CLIENT_ID is not configured.", "error")
-        return _redirect(f"/admin/rounds/{round_id}")
+        return _redirect(back)
 
     entry = SyncLog(kind="trakt-manual", round_number=round_.number)
     db.add(entry)
@@ -451,7 +469,7 @@ def sync_now(round_id: int, request: Request, db: Session = Depends(get_db)):
         db.add(entry)
         db.commit()
         flash(request, f"Sync failed: {exc}", "error")
-        return _redirect(f"/admin/rounds/{round_id}")
+        return _redirect(back)
 
     entry.ok = result.ok
     entry.watches_added = result.watches_added
@@ -462,7 +480,7 @@ def sync_now(round_id: int, request: Request, db: Session = Depends(get_db)):
     entry.finished_at = utcnow()
     db.commit()
     flash(request, f"Trakt sync: {result.summary()}", "ok" if result.ok else "error")
-    return _redirect(f"/admin/rounds/{round_id}")
+    return _redirect(back)
 
 
 @router.post("/rounds/{round_id}/refresh-metadata")

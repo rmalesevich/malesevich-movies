@@ -58,6 +58,7 @@
 
   <div class="actions" style="margin-top:20px">
     <form method="post" action="/admin/rounds/{{ round.id }}/sync">
+      <input type="hidden" name="next" value="/">
       <button type="submit" class="secondary small">Sync Trakt now</button>
     </form>
     <a class="btn secondary small" href="/admin/rounds/{{ round.id }}">Edit this round</a>
