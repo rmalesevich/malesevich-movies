@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Rounds &middot; {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Rounds</h2>
+<p class="sub">{{ rows|length }} rounds since {{ first_date.strftime('%B %d, %Y') if first_date else 'the beginning' }}.</p>
+
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="num">#</th>
+        <th>Started</th>
+        <th>Discussed</th>
+        <th class="num">Films</th>
+        <th>Picks</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="num"><a href="/rounds/{{ row.round.number }}">{{ row.round.number }}</a></td>
+        <td>{{ row.round.started_on.strftime('%b %d, %Y') }}</td>
+        <td>{{ row.round.discussed_on.strftime('%b %d, %Y') if row.round.discussed_on else '—' }}</td>
+        <td class="num">{{ row.pick_count }}</td>
+        <td class="muted">{{ row.titles }}</td>
+        <td><span class="pill {{ row.round.status.value }}">{{ row.round.status.value }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No rounds yet. Import your history or create round 1 from <a href="/admin/rounds">Manage Rounds</a>.</div>
+{% endif %}
+{% endblock %}

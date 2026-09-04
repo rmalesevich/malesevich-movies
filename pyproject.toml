@@ -1,0 +1,30 @@
+[project]
+name = "malesevich-movies"
+version = "0.1.0"
+description = "Management and statistics site for the Malesevich movie project"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # FastAPI 0.115 still calls asyncio.iscoroutinefunction.
+    "ignore::DeprecationWarning:fastapi.*",
+]
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+ignore = [
+    # FastAPI's whole dependency system is `def f(x = Depends(...))`.
+    "B008",
+    # Unpacking a fixture tuple and using part of it is fine in tests.
+    "RUF059",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*" = ["E501", "I001"]
+# Inline CSV fixtures have to keep their real header lines.
+"tests/test_import.py" = ["E501"]

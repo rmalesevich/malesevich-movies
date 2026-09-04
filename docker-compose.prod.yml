@@ -1,0 +1,30 @@
+# Production stack for TrueNAS.
+#
+#   1. Copy this repo (or just this file plus .env) onto the NAS.
+#   2. Create a dataset for the database and point DATA_PATH at it.
+#   3. docker compose -f docker-compose.prod.yml up -d --build
+#
+# Everything stateful lives in the single directory bound at /app/data, so a
+# ZFS snapshot of that dataset is a complete backup.
+services:
+  web:
+    build: .
+    image: malesevich-movies:latest
+    container_name: malesevich-movies
+    ports:
+      - "${HOST_PORT:-8080}:8000"
+    env_file:
+      - .env
+    environment:
+      DEBUG: "false"
+      DATABASE_URL: "sqlite:////app/data/malesevich.db"
+    volumes:
+      - ${DATA_PATH:-./data}:/app/data
+    restart: unless-stopped
+    # The image runs as uid 1000; make sure the dataset is writable by it.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

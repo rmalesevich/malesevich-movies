@@ -1,0 +1,40 @@
+{% macro movie_row(entry, lineup, watch_map, rating_map, round) -%}
+{% set movie = entry.movie %}
+<div class="round-movie">
+  {% if movie.poster_path %}
+    <img class="poster" src="{{ poster_url(movie.poster_path, 'w154') }}" alt="" loading="lazy">
+  {% else %}
+    <div class="poster placeholder">no<br>poster</div>
+  {% endif %}
+  <div class="meta">
+    <div class="title">
+      {{ movie.title }} <span class="year">{{ '(%s)'|format(movie.year) if movie.year }}</span>
+    </div>
+    <div class="byline">
+      <span class="pill selector">{{ entry.participant.name }}</span>
+      {% if movie.runtime %}<span class="muted">&nbsp;{{ movie.runtime }} min</span>{% endif %}
+      {% if entry.directors %}<span class="muted">&nbsp;&middot;&nbsp;dir. {{ entry.directors|join(', ') }}</span>{% endif %}
+    </div>
+    {% if movie.overview %}<p class="overview">{{ movie.overview }}</p>{% endif %}
+    <div class="watch-grid" style="margin-top:10px">
+      {% for person in lineup %}
+        {% set watched = watch_map.get((person.id, movie.id)) %}
+        {% set rating = rating_map.get((person.id, movie.id)) %}
+        {# A score predating the round came from an earlier viewing, not from
+           watching it for this round. Shown, but marked. #}
+        {% set carried_over = rating and rating.rated_at and round
+                              and rating.rated_at.date() < round.started_on %}
+        <span class="watch-cell {{ 'seen' if watched else 'unseen' }}"
+              title="{{ watched.watched_at.strftime('%b %d, %Y') if watched and watched.watched_at else 'No Trakt record yet' }}{% if watched and watched.plays > 1 %} ({{ watched.plays }} plays){% endif %}">
+          <span class="mark">{{ '✓' if watched else '○' }}</span>
+          {{ person.name }}
+          {% if rating %}
+            <span class="rating {{ 'carried' if carried_over }}"
+                  title="{% if carried_over %}Rated {{ rating.rated_at.strftime('%b %Y') }}, before this round{% elif rating.rated_at %}Rated {{ rating.rated_at.strftime('%b %d, %Y') }}{% endif %}">{{ rating.rating }}{% if carried_over %}<span class="carried-mark">*</span>{% endif %}</span>
+          {% endif %}
+        </span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{%- endmacro %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Manage Rounds &middot; {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Manage Rounds</h2>
+<p class="sub">
+  Close a round on the night you discuss it, then open the next one with the
+  current lineup.
+</p>
+
+{% if open_round %}
+<div class="panel" style="margin-bottom:22px">
+  <h3>Round {{ open_round.number }} is open</h3>
+  <p class="sub" style="margin-bottom:14px">
+    Started {{ open_round.started_on.strftime('%B %d, %Y') }} &middot;
+    {{ open_pick_count }} of {{ open_lineup_count }} picks recorded.
+  </p>
+  <div class="actions">
+    <a class="btn secondary" href="/admin/rounds/{{ open_round.id }}">Edit picks</a>
+    <form method="post" action="/admin/rounds/{{ open_round.id }}/sync">
+      <button type="submit" class="secondary">Sync Trakt now</button>
+    </form>
+  </div>
+  <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+  <h3>Close it and start round {{ open_round.number + 1 }}</h3>
+  <form method="post" action="/admin/rounds/{{ open_round.id }}/close">
+    <div class="field-row">
+      <div class="field">
+        <label for="discussed_on">Discussion date (closes round {{ open_round.number }})</label>
+        <input type="date" id="discussed_on" name="discussed_on" value="{{ today }}" required>
+      </div>
+      <div class="field">
+        <label for="next_started_on">Start date for round {{ open_round.number + 1 }}</label>
+        <input type="date" id="next_started_on" name="next_started_on" value="{{ today }}" required>
+      </div>
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" name="open_next" value="1" checked style="width:auto"> 
+        Immediately open round {{ open_round.number + 1 }} with the current lineup
+        ({{ current_lineup|map(attribute='name')|join(', ') or 'nobody yet' }})
+      </label>
+    </div>
+    <button type="submit">Close round {{ open_round.number }}</button>
+  </form>
+</div>
+{% else %}
+<div class="panel" style="margin-bottom:22px">
+  <h3>Start round {{ next_round_number }}</h3>
+  {% if current_lineup %}
+  <form method="post" action="/admin/rounds">
+    <div class="field-row">
+      <div class="field">
+        <label for="started_on">Start date</label>
+        <input type="date" id="started_on" name="started_on" value="{{ today }}" required>
+      </div>
+      <div class="field">
+        <label for="number">Round number</label>
+        <input type="number" id="number" name="number" value="{{ next_round_number }}" min="1" required>
+      </div>
+    </div>
+    <p class="sub">Lineup: {{ current_lineup|map(attribute='name')|join(', ') }}</p>
+    <button type="submit">Create round</button>
+  </form>
+  {% else %}
+    <p class="muted">Add participants first on the
+    <a href="/admin/participants">Participants</a> page.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<h3>All rounds</h3>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th class="num">#</th><th>Started</th><th>Discussed</th>
+          <th class="num">Picks</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="num">{{ row.round.number }}</td>
+        <td>{{ row.round.started_on.strftime('%b %d, %Y') }}</td>
+        <td>{{ row.round.discussed_on.strftime('%b %d, %Y') if row.round.discussed_on else '—' }}</td>
+        <td class="num">{{ row.pick_count }}</td>
+        <td><span class="pill {{ row.round.status.value }}">{{ row.round.status.value }}</span></td>
+        <td class="actions">
+          <a class="btn secondary small" href="/admin/rounds/{{ row.round.id }}">Edit</a>
+          <a class="btn secondary small" href="/rounds/{{ row.round.number }}">View</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No rounds yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if sync_logs %}
+<section class="section" style="margin-top:34px">
+  <h3>Recent Trakt syncs</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th class="num">Round</th><th>Result</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for entry in sync_logs %}
+        <tr>
+          <td>{{ entry.started_at.strftime('%b %d, %Y %H:%M') }} UTC</td>
+          <td class="num">{{ entry.round_number or '—' }}</td>
+          <td>{{ 'ok' if entry.ok else 'failed' }}</td>
+          <td class="muted">{{ entry.message or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
