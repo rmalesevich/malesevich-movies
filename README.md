@@ -273,7 +273,7 @@ The NAS needs to authenticate to pull a private repo. Generate a key **on the
 NAS** over SSH:
 
 ```bash
-ssh root@truenas.local
+ssh truenas_admin@truenas.local
 ssh-keygen -t ed25519 -C "truenas-malesevich" -f ~/.ssh/id_ed25519 -N ""
 cat ~/.ssh/id_ed25519.pub
 ```
@@ -314,7 +314,7 @@ complete backup** — there is no second database container to think about.
 ### 2. Clone the repo onto the NAS
 
 ```bash
-ssh root@truenas.local
+ssh truenas_admin@truenas.local
 cd /mnt/SSDPool/Application_Data
 git clone git@github.com:<your-username>/malesevich-movies.git Malesevich-Movies
 cd Malesevich-Movies
@@ -348,16 +348,16 @@ PGID=568
 `568:568` is the `apps` user on TrueNAS; make sure it owns the directory:
 
 ```bash
-mkdir -p /mnt/SSDPool/Application_Data/Malesevich-Movies/data
-chown -R 568:568 /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+sudo mkdir -p /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+sudo chown -R 568:568 /mnt/SSDPool/Application_Data/Malesevich-Movies/data
 ```
 
 ### 4. Build the image
 
 ```bash
 cd /mnt/SSDPool/Application_Data/Malesevich-Movies
-docker build -t malesevich-movies:latest .
-docker images malesevich-movies      # confirm it exists before the next step
+sudo docker build -t malesevich-movies:latest .
+sudo docker images malesevich-movies      # confirm it exists before the next step
 ```
 
 The app will not start if this image is missing, because it is never pulled.
@@ -383,25 +383,63 @@ on every container start, so the first boot creates the schema.
 
 ### 6. Seed the history
 
-With the app running, import the spreadsheet (see
-[Importing the historical rounds](#importing-the-historical-rounds)):
+**Your CSV is not on the NAS.** `data/seed/*.csv` is gitignored (and excluded
+from the image), so the file never travels with a `git pull` or a build. The
+only path into the container is the data bind mount, so copy it across from the
+Mac by hand:
 
 ```bash
-docker exec -it malesevich-movies python -m app.cli import-history data/seed/rounds.csv --dry-run
+scp data/seed/rounds.csv \
+    truenas_admin@truenas.local:/mnt/SSDPool/Application_Data/Malesevich-Movies/data/seed/
 ```
 
-Put `rounds.csv` in the dataset's `data/seed/` directory so the container can
-see it at `/app/data/seed/`.
+Then make sure the container's uid can read it — a file arriving with a
+restrictive umask is invisible to uid 568:
+
+```bash
+ssh truenas_admin@truenas.local
+cd /mnt/SSDPool/Application_Data/Malesevich-Movies/data/seed
+sudo chown 568:568 rounds.csv
+sudo chmod 644 rounds.csv
+```
+
+Now import it (see
+[Importing the historical rounds](#importing-the-historical-rounds)). The
+container's working directory is `/app` and the dataset is mounted at
+`/app/data`, so the path is relative to that — not to the repo on the host:
+
+```bash
+sudo docker exec -it malesevich-movies \
+    python -m app.cli import-history data/seed/rounds.csv --dry-run
+
+# happy with the report? drop --dry-run:
+sudo docker exec -it malesevich-movies \
+    python -m app.cli import-history data/seed/rounds.csv --sync-trakt
+```
+
+Address the container by **name** (`malesevich-movies`), not by the ID shown in
+`docker ps` — the ID changes every time the container is recreated. If you ever
+need to look the name up:
+
+```bash
+sudo docker ps --filter ancestor=malesevich-movies:latest --format '{{.Names}}'
+```
 
 ### Updating
 
 ```bash
-ssh root@truenas.local
+ssh truenas_admin@truenas.local
 cd /mnt/SSDPool/Application_Data/Malesevich-Movies
 ./docker/deploy.sh
 ```
 
 The script pulls, rebuilds, and recreates the container onto the new image.
+
+**Run it without `sudo`.** Docker on TrueNAS needs elevation, so the script
+detects that and elevates the docker commands itself, prompting for your
+password once. `git pull` deliberately stays unelevated: running it as root
+leaves root-owned files in the repo and then trips git's "dubious ownership"
+check on the next ordinary pull.
 
 **Restarting the app is not enough.** A restart reuses the image the container
 was created from, so it will keep serving the old build with no error to tell
@@ -409,7 +447,7 @@ you. The container must be *recreated*. `deploy.sh` handles that by reusing the
 compose project TrueNAS created:
 
 ```bash
-docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' malesevich-movies
+sudo docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' malesevich-movies
 ```
 
 If you would rather do it from the UI, use **Edit → Save** on the app (which
@@ -419,8 +457,8 @@ re-applies the compose file and recreates the container) rather than
 To confirm which build is live:
 
 ```bash
-docker inspect -f '{{.Image}}' malesevich-movies
-docker images --no-trunc -q malesevich-movies:latest    # should match
+sudo docker inspect -f '{{.Image}}' malesevich-movies
+sudo docker images --no-trunc -q malesevich-movies:latest    # should match
 ```
 
 ### Troubleshooting: the app goes straight to "Stopped"
@@ -429,9 +467,9 @@ TrueNAS reports a container that started and then exited as **Stopped**, with no
 indication of why. The reason is always in the container log:
 
 ```bash
-ssh root@truenas.local
-docker ps -a --filter name=malesevich-movies      # look at the STATUS/exit code
-docker logs malesevich-movies
+ssh truenas_admin@truenas.local
+sudo docker ps -a --filter name=malesevich-movies      # look at the STATUS/exit code
+sudo docker logs malesevich-movies
 ```
 
 (Or in the UI: **Apps** → the app → **Logs**.) The stopped container is kept, so
@@ -439,12 +477,12 @@ the log survives the crash.
 
 | Log says | Cause | Fix |
 | --- | --- | --- |
-| `cannot open /usr/local/bin/entrypoint.sh: Permission denied`, container `Restarting` | The image was built from a checkout whose files are mode 600, so unreadable files were baked in. Fixed in the Dockerfile — an image built before that fix still carries the problem. | Pull and rebuild: `git pull && docker build -t malesevich-movies:latest .` |
-| `/app/data is not writable` | The dataset is not owned by the uid the container runs as | `chown -R 568:568 <DATA_PATH>` on the host |
+| `cannot open /usr/local/bin/entrypoint.sh: Permission denied`, container `Restarting` | The image was built from a checkout whose files are mode 600, so unreadable files were baked in. Fixed in the Dockerfile — an image built before that fix still carries the problem. | Pull and rebuild: `git pull && sudo docker build -t malesevich-movies:latest .` |
+| `/app/data is not writable` | The dataset is not owned by the uid the container runs as | `sudo chown -R 568:568 <DATA_PATH>` on the host |
 | `the database directory ... does not exist` | `DATA_PATH` points somewhere that is not there | Create it, or correct `DATA_PATH` in `.env` |
-| `unable to open database file` | Same permission problem, from an older image built before the preflight check | Rebuild: `docker build -t malesevich-movies:latest .` |
+| `unable to open database file` | Same permission problem, from an older image built before the preflight check | Rebuild: `sudo docker build -t malesevich-movies:latest .` |
 | `required variable DATA_PATH is missing` | No `.env` beside `docker-compose.prod.yml`, or `DATA_PATH` unset in it | Create `.env` on the NAS (step 3 above) |
-| `pull access denied` | The image was not built on the NAS | `docker build -t malesevich-movies:latest .` |
+| `pull access denied` | The image was not built on the NAS | `sudo docker build -t malesevich-movies:latest .` |
 
 A container stuck in `Restarting` rather than `Exited` is crash-looping because
 of `restart: unless-stopped`; the log repeats the same line each time.
@@ -453,7 +491,7 @@ To check the two things that go wrong most often:
 
 ```bash
 # 1. Does the image exist on the NAS?
-docker images malesevich-movies
+sudo docker images malesevich-movies
 
 # 2. Does the data directory exist, and who owns it?
 stat -c '%n owned by %u:%g mode %a' /mnt/SSDPool/Application_Data/Malesevich-Movies/data
@@ -463,7 +501,7 @@ That uid:gid must match `PUID`/`PGID` in `.env` (568:568 by default). If it does
 not:
 
 ```bash
-chown -R 568:568 /mnt/SSDPool/Application_Data/Malesevich-Movies/data
+sudo chown -R 568:568 /mnt/SSDPool/Application_Data/Malesevich-Movies/data
 ```
 
 Then redeploy — remember that **Restart is not enough** if you rebuilt the
