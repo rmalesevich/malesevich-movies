@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Physical Media &middot; {{ app_name }}{% endblock %}
+{% block content %}
+<h2>Physical Media</h2>
+<p class="sub">Every film the group has discussed, and whether it is on the shelf.</p>
+
+<div class="stat-grid">
+  <div class="stat"><div class="value">{{ overview.total_rounds }}</div><div class="label">Rounds</div></div>
+  <div class="stat"><div class="value">{{ overview.distinct_titles }}</div><div class="label">Distinct titles</div></div>
+  <div class="stat">
+    <div class="value">{{ overview.titles_owned }}</div>
+    <div class="label">Titles owned</div>
+    <div class="stat-note">{{ overview.owned_percent|round(0)|int }}% &middot; {{ overview.titles_missing }} to go</div>
+  </div>
+  {% for fmt in formats %}
+    <div class="stat">
+      <div class="value">{{ overview.by_format[fmt] }}</div>
+      <div class="label">on {{ fmt.label }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="shelf-toolbar">
+  <div class="filters">
+    {% for key, caption in [('all', 'All'), ('owned', 'Owned'), ('missing', 'Missing')] %}
+      <a href="/physical-media{{ '' if key == 'all' else '?show=' ~ key }}"
+         class="filter {{ 'active' if show == key }}">{{ caption }}</a>
+    {% endfor %}
+  </div>
+  <span class="muted">{{ entries|length }} title{{ '' if entries|length == 1 else 's' }} shown</span>
+</div>
+
+{% if entries %}
+<div class="shelf">
+  {% for entry in entries %}
+    {% set movie = entry.movie %}
+    <div class="shelf-card {{ 'owned' if entry.owned else 'unowned' }}" id="movie-{{ movie.id }}">
+      <div class="shelf-art">
+        {% if movie.poster_path %}
+          {# Decorative: the title is spelled out just below the artwork. #}
+          <img src="{{ poster_url(movie.poster_path, 'w342') }}" alt="" loading="lazy">
+        {% else %}
+          <div class="shelf-noart">{{ movie.title }}</div>
+        {% endif %}
+        {% if entry.owned %}
+          <div class="shelf-badges">
+            {% for fmt in entry.formats %}
+              <span class="fmt-badge fmt-{{ fmt.value }}">{{ fmt.label }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="shelf-veil"><span>Not owned</span></div>
+        {% endif %}
+      </div>
+
+      <div class="shelf-meta">
+        <div class="shelf-title" title="{{ movie.title }}">{{ movie.title }}</div>
+        <div class="shelf-sub">
+          {% if movie.year %}{{ movie.year }}{% endif %}
+          {%- if entry.rounds %} &middot; round{{ '' if entry.rounds|length == 1 else 's' }}
+            {{ entry.rounds|join(', ') }}{% endif %}
+        </div>
+        <div class="shelf-sub muted">{{ entry.selectors|join(', ') }}</div>
+      </div>
+
+      <div class="shelf-toggles">
+        {% for fmt in formats %}
+          <form method="post" action="/physical-media/{{ movie.id }}/toggle">
+            <input type="hidden" name="format" value="{{ fmt.value }}">
+            <input type="hidden" name="show" value="{{ show }}">
+            <button type="submit"
+                    class="toggle {{ 'on' if entry.has(fmt) }}"
+                    title="{{ 'Remove' if entry.has(fmt) else 'Add' }} {{ fmt.label }}">{{ fmt.label }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% else %}
+  <div class="empty">
+    {% if show == 'owned' %}Nothing on the shelf yet - mark a title below its poster.
+    {% elif show == 'missing' %}Every discussed film is on the shelf. Done.
+    {% else %}No films have been picked yet.{% endif %}
+  </div>
+{% endif %}
+{% endblock %}
