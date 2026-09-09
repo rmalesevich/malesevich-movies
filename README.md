@@ -219,8 +219,52 @@ The normal rhythm, matching how the project actually works:
 | `/rounds` | Every round, with dates, film count and status. |
 | `/rounds/{n}` | One round in full. |
 | `/stats` | Average runtime by selector, films selected per person, most covered directors and actors (each expandable to the films and who picked them), genres, and films by release decade. |
+| `/physical-media` | The disc shelf: every distinct film ever discussed as a poster grid, faded when it is not owned and badged with the formats when it is. |
 | `/admin/participants` | Add, edit and remove participants and their round windows. |
 | `/admin/rounds` | Create, close, edit and delete rounds; manual sync; sync log. |
+
+---
+
+## Physical Media
+
+A completionist tracker for the standing goal: eventually own a physical copy
+of every film the group has ever discussed.
+
+`/physical-media` lists every **distinct** picked film as a poster grid. A film
+picked twice in two different rounds is one thing to buy, so it appears once.
+Titles that are not owned are greyed and faded; titles that are owned show the
+formats badged over the artwork. Under each poster are three toggles — 4K,
+Blu-ray, DVD — and the counters at the top track rounds, distinct titles,
+titles owned, and a per-format breakdown. `?show=owned` and `?show=missing`
+narrow the grid; the missing list is the shopping list.
+
+A film can be owned in more than one format at once — 4K editions almost always
+bundle the Blu-ray — so ownership is a row per format in `physical_copies`
+rather than a flag on `movies`. A title counts once in "titles owned" and once
+in each format it is held on, which is why the format columns can add up to
+more than the title count.
+
+### Why this is not synced from CLZ Cloud
+
+The original plan was to scrape a public CLZ Cloud share
+(`cloud.clz.com/<user>/movies`) once a day. That is not possible:
+
+- Every request to `cloud.clz.com` from a non-browser client returns
+  `403 "Just a moment..."` — the host sits behind a Cloudflare managed
+  challenge. A browser `User-Agent` does not change this, and neither the page,
+  a `?format=json` variant, nor any `/api/` path is reachable.
+- There is no public read API for a shared collection. The web app's own
+  "Export to XML" resolves to `cloud.clz.com/exportxml`, which needs a login
+  session and is behind the same challenge.
+- The one unchallenged host, `connect.collectorz.com`, redirects to
+  `app.clz.com` and only serves the editor — public profile paths 404 there.
+- `cloud.clz.com/robots.txt` disallows automated agents outright.
+
+Getting through would mean driving a headless browser or a challenge-solving
+service against CLZ's bot protection: fragile, and not something worth wiring
+into a nightly job. So ownership is tracked here directly instead. If CLZ ever
+publishes a read API, `app/services/physical.py` is where an importer would
+land — `toggle_format` is the only writer, and the shelf reads one table.
 
 ---
 
@@ -573,6 +617,7 @@ app/
     views.py         /, /rounds, /stats
     admin.py         /admin/*
     api.py           /api/tmdb/search  (autocomplete)
+    physical.py      /physical-media   (the disc shelf)
   services/
     tmdb.py          TMDB client + metadata persistence
     trakt.py         Trakt client
@@ -581,6 +626,7 @@ app/
     participants.py  Name matching (case/spacing) and duplicate merging
     stats.py         Aggregate queries
     rounds.py        Shared read helpers
+    physical.py      Shelf assembly and ownership counts
   templates/         Jinja2
   static/            app.css, search.js (no CDN, no build step)
 alembic/             Migrations
@@ -602,3 +648,7 @@ docker/deploy.sh     NAS update: pull, rebuild, recreate the container
 - **Only the top 20 billed cast and a fixed list of crew jobs are stored** — the
   uncredited long tail only adds noise to the "most covered actors" statistic.
   See `CAST_LIMIT` and `CREW_JOBS` in `app/services/tmdb.py`.
+- **Physical ownership is one row per (movie, format)** in `physical_copies`,
+  and is deliberately *not* scoped to a round: owning a film is a fact about
+  the collection, not about the round that surfaced it. Deleting a movie takes
+  its discs with it.

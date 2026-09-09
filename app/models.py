@@ -40,6 +40,29 @@ class RecordSource(enum.StrEnum):
     MANUAL = "manual"
 
 
+class MediaFormat(enum.StrEnum):
+    """Physical disc formats worth distinguishing, best quality first.
+
+    Declaration order is display order, so a film owned on more than one
+    format leads with the best copy on the shelf.
+    """
+
+    UHD_4K = "4k"
+    BLU_RAY = "bluray"
+    DVD = "dvd"
+
+    @property
+    def label(self) -> str:
+        return _FORMAT_LABELS[self]
+
+
+_FORMAT_LABELS = {
+    MediaFormat.UHD_4K: "4K",
+    MediaFormat.BLU_RAY: "Blu-ray",
+    MediaFormat.DVD: "DVD",
+}
+
+
 # --------------------------------------------------------------------------
 # People taking part
 # --------------------------------------------------------------------------
@@ -196,6 +219,9 @@ class Movie(Base):
     genres: Mapped[list[MovieGenre]] = relationship(
         back_populates="movie", cascade="all, delete-orphan"
     )
+    copies: Mapped[list[PhysicalCopy]] = relationship(
+        back_populates="movie", cascade="all, delete-orphan"
+    )
 
     @property
     def year(self) -> int | None:
@@ -336,6 +362,36 @@ class Rating(Base):
     round: Mapped[Round] = relationship(back_populates="ratings")
     participant: Mapped[Participant] = relationship()
     movie: Mapped[Movie] = relationship()
+
+
+class PhysicalCopy(Base):
+    """A disc of a picked film sitting on the shelf.
+
+    One row per format rather than a flag on Movie, because a single purchase
+    routinely covers more than one - 4K editions almost always bundle the
+    Blu-ray - and the shelf breakdown should count both.
+
+    Unlike watches and ratings this is not scoped to a round: owning a film is
+    a fact about the collection, not about the round that surfaced it.
+    """
+
+    __tablename__ = "physical_copies"
+    __table_args__ = (UniqueConstraint("movie_id", "format"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    format: Mapped[MediaFormat] = mapped_column(
+        Enum(MediaFormat, native_enum=False), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    movie: Mapped[Movie] = relationship(back_populates="copies")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<PhysicalCopy {self.movie_id} {self.format.label}>"
 
 
 class SyncLog(Base):
