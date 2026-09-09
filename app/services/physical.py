@@ -7,6 +7,7 @@ thing to buy, and counts once here.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
@@ -25,6 +26,17 @@ from app.models import (
 FORMATS: tuple[MediaFormat, ...] = tuple(MediaFormat)
 
 _FORMAT_RANK = {fmt: index for index, fmt in enumerate(FORMATS)}
+
+# Leading articles are ignored when alphabetising, the way a video shop shelves
+# them: "The Thing" files under T, "An Education" under E.
+_LEADING_ARTICLE = re.compile(r"^(?:a|an|the)\s+", re.IGNORECASE)
+
+
+def sort_key(title: str) -> str:
+    """How a title files on the shelf: case-folded, minus any leading article."""
+    stripped = _LEADING_ARTICLE.sub("", title.strip(), count=1)
+    # A film actually called "The" keeps its word rather than sorting first.
+    return (stripped or title).casefold()
 
 
 @dataclass
@@ -75,11 +87,9 @@ def _sorted_formats(formats: list[MediaFormat]) -> list[MediaFormat]:
 def shelf(db: Session) -> list[ShelfEntry]:
     """Every distinct picked film, alphabetical, with its discs attached."""
     movies = db.scalars(
-        select(Movie)
-        .join(Pick, Pick.movie_id == Movie.id)
-        .group_by(Movie.id)
-        .order_by(func.lower(Movie.title))
+        select(Movie).join(Pick, Pick.movie_id == Movie.id).group_by(Movie.id)
     ).all()
+    movies = sorted(movies, key=lambda movie: sort_key(movie.title))
     if not movies:
         return []
 

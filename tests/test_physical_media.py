@@ -47,6 +47,32 @@ def test_shelf_lists_distinct_titles_alphabetically(db, shelf_world):
     assert [e.movie.title for e in entries] == ["Drive", "Fargo", "Heat"]
 
 
+def test_shelf_ignores_leading_articles_when_alphabetising(db, shelf_world):
+    # One pick each - picks are unique per participant per round.
+    pickers = [f.make_participant(db, name, joined_round=3)
+               for name in ("Cal", "Dee", "Eve")]
+    r3 = f.make_round(db, 3, pickers, started_on=date(2024, 3, 1))
+    for picker, title in zip(pickers, ("The Godfather", "An Education", "A Prophet")):
+        f.make_pick(db, r3, picker, f.make_movie(db, title))
+    db.commit()
+
+    titles = [e.movie.title for e in shelf_service.shelf(db)]
+    assert titles == [
+        "Drive",
+        "An Education",
+        "Fargo",
+        "The Godfather",
+        "Heat",
+        "A Prophet",
+    ]
+
+
+def test_sort_key_keeps_a_title_that_is_only_an_article():
+    assert shelf_service.sort_key("The") == "the"
+    assert shelf_service.sort_key("Theodore") == "theodore"
+    assert shelf_service.sort_key("A Prophet") == "prophet"
+
+
 def test_shelf_collapses_a_film_picked_in_two_rounds(db, shelf_world):
     heat = next(e for e in shelf_service.shelf(db) if e.movie.title == "Heat")
     assert heat.rounds == [1, 2]

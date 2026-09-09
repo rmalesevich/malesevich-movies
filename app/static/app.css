@@ -360,10 +360,11 @@ details.expand summary:hover { color: var(--text); }
 .fmt-dvd { background: #b9c2d0; }
 
 .shelf-meta { margin-top: 9px; }
+/* One line, always: cards keep a common baseline however long the title is.
+   The full title stays reachable through the tooltip on the element. */
 .shelf-title {
   font-size: 13px; font-weight: 600; line-height: 1.3;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .shelf-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
