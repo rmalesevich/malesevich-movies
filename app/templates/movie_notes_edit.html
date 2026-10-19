@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "partials/movie_header.html" import movie_header %}
+{% block title %}{{ 'Edit' if note else 'Add' }} notes on {{ movie.title }} &middot; {{ app_name }}{% endblock %}
+{% block content %}
+
+{{ movie_header(movie, profile) }}
+
+<form method="post" action="/movies/{{ movie.id }}/notes">
+  <div class="field">
+    <label for="body">
+      Notes on {{ movie.title }}
+      <span class="muted">&mdash; Markdown: <code>#</code> headings,
+        <code>**bold**</code>, <code>-</code> lists, <code>&gt;</code> quotes,
+        tables and links all work.</span>
+    </label>
+    <textarea id="body" name="body" class="note-editor" rows="22"
+              placeholder="What did you make of it?"
+              autofocus>{{ note.body if note else '' }}</textarea>
+  </div>
+  <div class="actions">
+    <button type="submit">{{ 'Save notes' if note else 'Add notes' }}</button>
+    <a class="btn secondary" href="{{ back }}">Cancel</a>
+  </div>
+</form>
+
+{% if note %}
+  {# The title is deliberately not interpolated into the confirm string: a
+     title with an apostrophe in it would break out of the JS literal. #}
+  <form method="post" action="/movies/{{ movie.id }}/notes/delete"
+        style="margin-top:14px"
+        onsubmit="return confirm('Delete these notes for good?')">
+    <button type="submit" class="danger small">Delete these notes</button>
+  </form>
+  <p class="sub" style="margin-top:8px">
+    Saving an empty box clears the notes too.
+  </p>
+{% endif %}
+
+{% endblock %}

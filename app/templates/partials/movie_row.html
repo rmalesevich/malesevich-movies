@@ -1,4 +1,4 @@
-{% macro movie_row(entry, lineup, watch_map, rating_map, round) -%}
+{% macro movie_row(entry, lineup, watch_map, rating_map, round, noted=none) -%}
 {% set movie = entry.movie %}
 <div class="round-movie">
   {% if movie.poster_path %}
@@ -35,6 +35,22 @@
         </span>
       {% endfor %}
     </div>
+    {# Both states point at the same URL: it shows the write-up when there is
+       one and opens the form when there is not. The label is what tells you
+       which you are about to get. #}
+    {% if noted is not none %}
+      <div class="note-line">
+        {% if movie.id in noted %}
+          <a class="note-link has-note" href="/movies/{{ movie.id }}/notes">
+            <span class="note-mark" aria-hidden="true">✎</span> Notes
+          </a>
+        {% else %}
+          <a class="note-link no-note" href="/movies/{{ movie.id }}/notes">
+            <span class="note-mark" aria-hidden="true">＋</span> Add notes
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 </div>
 {%- endmacro %}

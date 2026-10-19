@@ -40,7 +40,7 @@
   {% if entries %}
     <div class="table-wrap">
       {% for entry in entries %}
-        {{ movie_row(entry, lineup, watch_map, rating_map, round) }}
+        {{ movie_row(entry, lineup, watch_map, rating_map, round, noted) }}
       {% endfor %}
     </div>
     {% if has_carried_ratings %}

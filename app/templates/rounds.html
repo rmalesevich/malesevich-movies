@@ -12,6 +12,7 @@
         <th class="num">#</th>
         <th>Started</th>
         <th>Discussed</th>
+        <th class="num">Days</th>
         <th class="num">Films</th>
         <th>Picks</th>
         <th>Status</th>
@@ -23,6 +24,13 @@
         <td class="num"><a href="/rounds/{{ row.round.number }}">{{ row.round.number }}</a></td>
         <td>{{ row.round.started_on.strftime('%b %d, %Y') }}</td>
         <td>{{ row.round.discussed_on.strftime('%b %d, %Y') if row.round.discussed_on else '—' }}</td>
+        <td class="num">
+          {%- if row.days is not none -%}
+            {{ row.days }}
+          {%- else -%}
+            <span class="muted" title="Still open - no discussion date yet">{{ row.days_so_far }} so far</span>
+          {%- endif -%}
+        </td>
         <td class="num">{{ row.pick_count }}</td>
         <td class="muted">{{ row.titles }}</td>
         <td><span class="pill {{ row.round.status.value }}">{{ row.round.status.value }}</span></td>

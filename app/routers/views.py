@@ -1,12 +1,15 @@
 """Read-only views: current round, round archive, statistics."""
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Movie, Pick, Round, SyncLog
+from app.services import notes as notes_service
 from app.services import rounds as round_service
 from app.services import stats as stats_service
 from app.templating import render
@@ -26,6 +29,7 @@ def current_round(request: Request, db: Session = Depends(get_db)):
 
     total_runtime = sum(e.movie.runtime or 0 for e in entries)
     last_sync = db.scalar(select(SyncLog).order_by(SyncLog.started_at.desc()))
+    noted = notes_service.movie_ids_with_notes(db, [e.movie.id for e in entries])
 
     return render(
         request,
@@ -37,6 +41,7 @@ def current_round(request: Request, db: Session = Depends(get_db)):
             "lineup": lineup,
             "watch_map": watch_map,
             "rating_map": rating_map,
+            "noted": noted,
             "days_elapsed": round_service.days_since(round_.started_on),
             "has_carried_ratings": any(
                 r.rated_at and r.rated_at.date() < round_.started_on
@@ -66,11 +71,18 @@ def round_list(request: Request, db: Session = Depends(get_db)):
     ).all():
         titles.setdefault(round_id, []).append(title)
 
+    # An open round has no discussion date to measure to, so it reports the
+    # days run so far instead of a span that does not exist yet.
+    today = date.today()
     rows = [
         {
             "round": r,
             "pick_count": counts.get(r.id, 0),
             "titles": ", ".join(titles.get(r.id, [])),
+            "days": r.days_to_discussion,
+            "days_so_far": (
+                None if r.discussed_on else max((today - r.started_on).days, 0)
+            ),
         }
         for r in all_rounds
     ]
@@ -109,6 +121,9 @@ def round_detail(number: int, request: Request, db: Session = Depends(get_db)):
             "lineup": lineup,
             "watch_map": watch_map,
             "rating_map": rating_map,
+            "noted": notes_service.movie_ids_with_notes(
+                db, [e.movie.id for e in entries]
+            ),
             "prev_round": prev_round,
             "next_round": next_round,
         },

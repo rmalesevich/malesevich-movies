@@ -141,6 +141,17 @@ class Round(Base):
         """Upper bound used when querying Trakt history for this round."""
         return self.discussed_on or date.today()
 
+    @property
+    def days_to_discussion(self) -> int | None:
+        """Days from the start of the round to the discussion.
+
+        None while the round is still open - there is no second date to
+        measure to yet.
+        """
+        if self.discussed_on is None:
+            return None
+        return (self.discussed_on - self.started_on).days
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Round {self.number} {self.status.value}>"
 
@@ -221,6 +232,9 @@ class Movie(Base):
     )
     copies: Mapped[list[PhysicalCopy]] = relationship(
         back_populates="movie", cascade="all, delete-orphan"
+    )
+    note: Mapped[MovieNote | None] = relationship(
+        back_populates="movie", cascade="all, delete-orphan", uselist=False
     )
 
     @property
@@ -392,6 +406,43 @@ class PhysicalCopy(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<PhysicalCopy {self.movie_id} {self.format.label}>"
+
+
+class MovieNote(Base):
+    """A hand-written write-up of a film, authored in Markdown.
+
+    One note per film rather than one per pick: like a disc on the shelf, a
+    note is a fact about the film, and a film picked twice in two rounds is
+    still only one thing to have written about.
+
+    It lives in its own table rather than as a column on Movie because every
+    Movie column is TMDB-derived and gets overwritten by a metadata refresh.
+    Handwritten prose must not be.
+
+    There is one author - the site owner - so the note carries no byline.
+    """
+
+    __tablename__ = "movie_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    # Markdown source, exactly as typed. Rendering happens at display time so
+    # the original is always the thing that was saved.
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow
+    )
+
+    movie: Mapped[Movie] = relationship(back_populates="note")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<MovieNote movie={self.movie_id}>"
 
 
 class SyncLog(Base):

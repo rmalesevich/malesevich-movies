@@ -66,6 +66,24 @@ def test_rounds_index_and_detail(client, world):
     assert client.get("/rounds/999").status_code == 404
 
 
+def test_rounds_index_shows_the_span_from_start_to_discussion(client, world):
+    # Round 1 ran Jan 1 -> Feb 1 2024: 31 days.
+    body = client.get("/rounds").text
+    assert "<th class=\"num\">Days</th>" in body
+    assert ">31<" in body or ">\n            31\n          <" in body
+
+
+def test_days_to_discussion_is_none_while_a_round_is_open(world):
+    assert world["r1"].days_to_discussion == 31
+    assert world["r2"].days_to_discussion is None
+
+
+def test_an_open_round_reports_the_days_run_so_far(client, world):
+    body = client.get("/rounds").text
+    elapsed = (date.today() - world["r2"].started_on).days
+    assert f"{elapsed} so far" in body
+
+
 def test_stats_page_renders(client, world):
     response = client.get("/stats")
     assert response.status_code == 200

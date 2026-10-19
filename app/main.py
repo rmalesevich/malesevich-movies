@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth import is_authenticated, password_matches, sign_in, sign_out
 from app.config import BASE_DIR, settings
-from app.routers import admin, api, physical, views
+from app.routers import admin, api, notes, physical, views
 from app.scheduler import start_scheduler, stop_scheduler
 from app.templating import templates
 
@@ -56,6 +56,7 @@ app.include_router(views.router)
 app.include_router(admin.router)
 app.include_router(api.router)
 app.include_router(physical.router)
+app.include_router(notes.router)
 
 
 @app.get("/healthz")

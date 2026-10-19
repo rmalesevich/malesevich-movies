@@ -216,12 +216,47 @@ The normal rhythm, matching how the project actually works:
 | Path | What it shows |
 | --- | --- |
 | `/` | The open round: each film with poster, selector, runtime, director, and a checkbox per participant showing who has watched it (with their rating). |
-| `/rounds` | Every round, with dates, film count and status. |
-| `/rounds/{n}` | One round in full. |
+| `/rounds` | Every round, with dates, the days from start to discussion, film count and status. |
+| `/rounds/{n}` | One round in full, each film flagged with whether it has been written up. |
 | `/stats` | Average runtime by selector, films selected per person, most covered directors and actors (each expandable to the films and who picked them), genres, and films by release decade. |
 | `/physical-media` | The disc shelf: every distinct film ever discussed as a poster grid, faded when it is not owned and badged with the formats when it is. |
+| `/movies/{id}/notes` | The write-up on one film, rendered from Markdown, under the film's details. Redirects to the form when nothing has been written yet. |
+| `/movies/{id}/notes/edit` | The Markdown editor for one film's notes. |
 | `/admin/participants` | Add, edit and remove participants and their round windows. |
 | `/admin/rounds` | Create, close, edit and delete rounds; manual sync; sync log. |
+
+---
+
+## Film notes
+
+Each film can carry one hand-written write-up, authored in Markdown. This is a
+single-author feature: there is one set of notes per film, no byline and no
+per-participant threads.
+
+Under every film on `/` and `/rounds/{n}` is a notes link. It reads **Notes**
+in gold when something has been written and **Add notes** in grey when it has
+not, so the round page says at a glance which films still need writing up.
+Both states point at the same URL, `/movies/{id}/notes`: it renders the
+write-up when there is one and redirects to the editor when there is not, so
+following the link never dead-ends on an empty page.
+
+The notes page shows the film's details above the prose — poster, tagline,
+director, billed cast, runtime, release date, genres, TMDB score, which rounds
+it was picked in and by whom, and everybody's scores grouped by round.
+
+Markdown is CommonMark via `markdown-it-py`, plus tables and strikethrough.
+Raw HTML in the source is **escaped rather than passed through**, and
+markdown-it's own link validator rejects `javascript:`, `vbscript:` and `data:`
+URLs, so the rendered page needs no separate sanitiser pass. What is stored is
+the Markdown source exactly as typed; rendering happens at display time, so the
+original is always the thing that was saved. Saving an empty box clears the
+notes, which keeps "has notes" a question the data can answer honestly.
+
+Notes are keyed by **film**, not by pick — like a disc on the shelf, a note is
+a fact about the film, so a film picked in two different rounds shows the same
+write-up in both. They live in their own table rather than as a column on
+`movies` because every `movies` column is TMDB-derived and gets overwritten by
+a metadata refresh; handwritten prose must not be.
 
 ---
 
@@ -618,6 +653,7 @@ app/
     admin.py         /admin/*
     api.py           /api/tmdb/search  (autocomplete)
     physical.py      /physical-media   (the disc shelf)
+    notes.py         /movies/{id}/notes (per-film Markdown write-ups)
   services/
     tmdb.py          TMDB client + metadata persistence
     trakt.py         Trakt client
@@ -627,6 +663,7 @@ app/
     stats.py         Aggregate queries
     rounds.py        Shared read helpers
     physical.py      Shelf assembly and ownership counts
+    notes.py         Note storage, Markdown rendering, film profiles
   templates/         Jinja2
   static/            app.css, search.js (no CDN, no build step)
 alembic/             Migrations
@@ -652,3 +689,7 @@ docker/deploy.sh     NAS update: pull, rebuild, recreate the container
   and is deliberately *not* scoped to a round: owning a film is a fact about
   the collection, not about the round that surfaced it. Deleting a movie takes
   its discs with it.
+- **Film notes are one row per movie** in `movie_notes`, for the same reason,
+  and store Markdown source rather than rendered HTML. The unique index on
+  `movie_id` is what makes "one note per film" a schema guarantee rather than a
+  convention. Deleting a movie takes its notes with it.

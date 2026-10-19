@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "partials/movie_header.html" import movie_header %}
+{% block title %}{{ movie.title }} notes &middot; {{ app_name }}{% endblock %}
+{% block content %}
+
+{{ movie_header(movie, profile) }}
+
+<div class="panel prose-panel">
+  <div class="prose">{{ note_html }}</div>
+</div>
+
+<p class="sub" style="margin-top:12px">
+  Written {{ note.created_at.strftime('%B %d, %Y') }}{% if note.updated_at.date() != note.created_at.date() %},
+  last edited {{ note.updated_at.strftime('%B %d, %Y') }}{% endif %}.
+</p>
+
+<div class="actions" style="margin-top:18px">
+  <a class="btn secondary small" href="/movies/{{ movie.id }}/notes/edit">Edit notes</a>
+  <a class="btn secondary small" href="{{ back }}">Back</a>
+</div>
+
+{% endblock %}

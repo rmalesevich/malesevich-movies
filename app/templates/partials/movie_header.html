@@ -1,0 +1,64 @@
+{# The film's details, shared by the notes page and the notes form so the
+   context is identical whether you are reading or writing. #}
+{% macro movie_header(movie, profile) -%}
+<div class="film-head">
+  {% if movie.poster_path %}
+    <img class="film-poster" src="{{ poster_url(movie.poster_path, 'w342') }}" alt="" loading="lazy">
+  {% else %}
+    <div class="film-poster placeholder">no<br>poster</div>
+  {% endif %}
+  <div class="film-facts">
+    <h2>{{ movie.title }}{% if movie.year %} <span class="muted">({{ movie.year }})</span>{% endif %}</h2>
+    {% if movie.tagline %}<p class="film-tagline">{{ movie.tagline }}</p>{% endif %}
+
+    <dl class="film-dl">
+      {% if profile.directors %}
+        <dt>Director</dt><dd>{{ profile.directors|join(', ') }}</dd>
+      {% endif %}
+      {% if profile.cast %}
+        <dt>Cast</dt><dd>{{ profile.cast|join(', ') }}</dd>
+      {% endif %}
+      {% if profile.runtime_display %}
+        <dt>Runtime</dt><dd>{{ profile.runtime_display }}</dd>
+      {% endif %}
+      {% if movie.release_date %}
+        <dt>Released</dt><dd>{{ movie.release_date.strftime('%B %d, %Y') }}</dd>
+      {% endif %}
+      {% if profile.genres %}
+        <dt>Genres</dt><dd>{{ profile.genres|join(', ') }}</dd>
+      {% endif %}
+      {% if movie.tmdb_vote_average %}
+        <dt>TMDB</dt><dd>{{ '%.1f'|format(movie.tmdb_vote_average) }}</dd>
+      {% endif %}
+      {% if profile.appearances %}
+        <dt>Picked</dt>
+        <dd>
+          {%- for appearance in profile.appearances %}
+            {%- if not loop.first %} &middot; {% endif -%}
+            <a href="/rounds/{{ appearance.round_number }}">Round {{ appearance.round_number }}</a>
+            by {{ appearance.selector }}
+          {%- endfor %}
+        </dd>
+      {% endif %}
+    </dl>
+
+    {% if movie.overview %}<p class="film-overview">{{ movie.overview }}</p>{% endif %}
+
+    {# Scores are grouped by round, because a film picked twice was rated
+       twice and a single flat list would not say which viewing was which. #}
+    {% for appearance in profile.appearances if appearance.ratings %}
+      <div class="film-scores">
+        <span class="film-scores-label">
+          Round {{ appearance.round_number }}
+          &middot; averaged {{ '%.1f'|format(appearance.average) }}
+        </span>
+        <div class="watch-grid">
+          {% for name, score in appearance.ratings %}
+            <span class="watch-cell seen">{{ name }} <span class="rating">{{ score }}</span></span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}
